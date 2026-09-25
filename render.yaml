@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: angle-telegram-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn bot:app
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        value: Angle_Chat_Super_bot
+      - key: WEBHOOK_URL
+        sync: false
+      - key: OWNER_IDS
+        sync: false
+      - key: AI_API_PRIMARY
+        sync: false
+      - key: AI_API_BACKUP
+        sync: false

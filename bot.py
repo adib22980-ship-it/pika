@@ -8,9 +8,7 @@ import requests
 from flask import Flask, request
 from openai import OpenAI
 
-
 app = Flask(__name__)
-
 
 # =========================================================
 # ENVIRONMENT VARIABLES
@@ -18,7 +16,10 @@ app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
+WEBHOOK_URL = os.getenv(
+    "WEBHOOK_URL",
+    "https://pika-2.onrender.com"
+).strip().rstrip("/")
 
 BOT_USERNAME = os.getenv(
     "BOT_USERNAME",
@@ -104,23 +105,6 @@ IMPORTANT:
 - Do not pretend every message is a question.
 - Understand context from previous messages when available.
 
-Examples:
-
-User: "2+2 kitna hai?"
-Answer: "4."
-
-User: "Python kya hai?"
-Answer: Explain Python properly.
-
-User: "kya kar rahi ho?"
-Answer naturally as Angle.
-
-User: "ek joke suna"
-Answer with a joke.
-
-User: "mujhe maths samjha"
-Explain maths properly.
-
 Always respond to what the user actually said.
 """
 
@@ -158,7 +142,11 @@ ABUSE_WORDS = [
 
 def contains_abuse(message):
     text = message.lower()
-    return any(word in text for word in ABUSE_WORDS)
+
+    return any(
+        word in text
+        for word in ABUSE_WORDS
+    )
 
 
 # =========================================================
@@ -179,6 +167,7 @@ def send_request(method, data=None):
         return None
 
     try:
+
         response = requests.post(
             telegram_url(method),
             data=data or {},
@@ -193,7 +182,7 @@ def send_request(method, data=None):
 
         print(
             f"Telegram API error ({method}):",
-            e
+            repr(e)
         )
 
         return None
@@ -275,20 +264,41 @@ def load_db():
         if not isinstance(data, dict):
             return default_db()
 
-        data.setdefault("groups", [])
-        data.setdefault("stats", {})
+        data.setdefault(
+            "groups",
+            []
+        )
+
+        data.setdefault(
+            "stats",
+            {}
+        )
+
         data["stats"].setdefault(
             "total_messages",
             0
         )
 
-        data.setdefault("banned", [])
-        data.setdefault("users", {})
-        data.setdefault("admins", [])
+        data.setdefault(
+            "banned",
+            []
+        )
+
+        data.setdefault(
+            "users",
+            {}
+        )
+
+        data.setdefault(
+            "admins",
+            []
+        )
+
         data.setdefault(
             "voice_chat_active",
             []
         )
+
         data.setdefault(
             "conversations",
             {}
@@ -298,7 +308,10 @@ def load_db():
 
     except Exception as e:
 
-        print("Database read error:", e)
+        print(
+            "Database read error:",
+            repr(e)
+        )
 
         return default_db()
 
@@ -318,14 +331,20 @@ def save_db(data):
 
     except Exception as e:
 
-        print("Database save error:", e)
+        print(
+            "Database save error:",
+            repr(e)
+        )
 
 
 # =========================================================
 # CONVERSATION MEMORY
 # =========================================================
 
-def get_history(db, chat_id):
+def get_history(
+    db,
+    chat_id
+):
 
     key = str(chat_id)
 
@@ -334,12 +353,10 @@ def get_history(db, chat_id):
         {}
     )
 
-    history = conversations.setdefault(
+    return conversations.setdefault(
         key,
         []
     )
-
-    return history
 
 
 def build_ai_messages(
@@ -373,8 +390,10 @@ Current message is from the user.
     if is_abuse:
 
         system_prompt += """
+
 The user used abusive language.
-Handle it naturally. Do not blindly repeat the abuse.
+Handle it naturally.
+Do not blindly repeat the abuse.
 """
 
     messages = [
@@ -384,11 +403,12 @@ Handle it naturally. Do not blindly repeat the abuse.
         }
     ]
 
-    # Last 12 messages for context.
+    # Previous conversation context
     messages.extend(
         history[-12:]
     )
 
+    # Current message
     messages.append(
         {
             "role": "user",
@@ -425,7 +445,7 @@ def remember_conversation(
         }
     )
 
-    # Keep database small.
+    # Keep database small
     if len(history) > 20:
 
         del history[:-20]
@@ -461,12 +481,15 @@ def get_ai_response(
 
     try:
 
+        print(
+            f"Sending AI request: "
+            f"model={OPENAI_MODEL}, "
+            f"chat_id={chat_id}"
+        )
+
         response = client.chat.completions.create(
-
             model=OPENAI_MODEL,
-
             messages=messages,
-
             max_tokens=700,
         )
 
@@ -488,7 +511,6 @@ def get_ai_response(
         answer = answer.strip()
 
         if not answer:
-
             return None
 
         remember_conversation(
@@ -496,6 +518,12 @@ def get_ai_response(
             chat_id,
             message,
             answer
+        )
+
+        save_db(db)
+
+        print(
+            "AI response generated successfully"
         )
 
         return answer
@@ -609,9 +637,8 @@ def handle_command(
 
         send_message(
             chat_id,
-            f"Your ID: <code>{user_id}</code>",
-            reply_id,
-            html=True
+            f"Your ID: {user_id}",
+            reply_id
         )
 
     elif (
@@ -651,7 +678,16 @@ def handle_command(
 
 def process_message(update):
 
+    print(
+        "TELEGRAM UPDATE RECEIVED"
+    )
+
     if "message" not in update:
+
+        print(
+            "Update has no message field"
+        )
+
         return
 
     msg = update["message"]
@@ -706,21 +742,27 @@ def process_message(update):
         "message_id"
     )
 
+    print(
+        f"Message: "
+        f"chat_id={chat_id}, "
+        f"type={chat_type}, "
+        f"user={first_name}, "
+        f"text={message!r}"
+    )
+
     if not user_id:
         return
 
     db = load_db()
 
-    # =====================================================
-    # USER STATS
-    # =====================================================
-
+    # Banned user
     if user_id in db.get(
         "banned",
         []
     ):
         return
 
+    # User statistics
     db.setdefault(
         "users",
         {}
@@ -750,11 +792,7 @@ def process_message(update):
 
     save_db(db)
 
-
-    # =====================================================
-    # COMMANDS
-    # =====================================================
-
+    # Commands
     if message.startswith("/"):
 
         handle_command(
@@ -766,41 +804,15 @@ def process_message(update):
 
         return
 
-
-    # =====================================================
-    # GROUP / PRIVATE
-    # =====================================================
-
+    # Group
     is_group = chat_type in (
         "group",
         "supergroup"
     )
 
-    is_private = (
-        chat_type == "private"
-    )
-
-
-    # =====================================================
-    # IMPORTANT:
-    # REPLY TO EVERY NORMAL MESSAGE
-    # =====================================================
-
-    # In group:
-    # every text message gets an AI response.
-    #
-    # This is intentionally NOT limited to:
-    # - mentions
-    # - abuse
-    # - replies
-    #
-    # because you asked for ChatGPT-like chatting.
-
-
+    # If mentioned, remove mention
     if is_group:
 
-        # Remove @Angle / bot prefix
-        # when user used it.
         if is_bot_mentioned(
             message
         ):
@@ -809,23 +821,21 @@ def process_message(update):
                 message
             )
 
-
-    # =====================================================
-    # AI
-    # =====================================================
-
     if not message.strip():
         return
 
+    # Abuse detection
     is_abuse = contains_abuse(
         message
     )
 
+    # Typing indicator
     send_chat_action(
         chat_id,
         "typing"
     )
 
+    # AI
     response = get_ai_response(
         db=db,
         chat_id=chat_id,
@@ -834,11 +844,7 @@ def process_message(update):
         is_abuse=is_abuse,
     )
 
-    # IMPORTANT:
-    # No fake "Haan bolo"
-    # No fake "Samajh gayi"
-    #
-    # If AI API fails, simply log it.
+    # No fake fallback
     if not response:
 
         print(
@@ -848,6 +854,7 @@ def process_message(update):
 
         return
 
+    # Send AI answer
     send_message(
         chat_id,
         response,
@@ -880,6 +887,10 @@ def health():
 @app.post("/webhook")
 def webhook():
 
+    print(
+        "POST /webhook RECEIVED"
+    )
+
     update = request.get_json(
         silent=True
     )
@@ -898,6 +909,12 @@ def webhook():
                 "Webhook processing error:",
                 repr(e)
             )
+
+    else:
+
+        print(
+            "Webhook received without JSON body"
+        )
 
     return "OK", 200
 
@@ -931,17 +948,84 @@ def set_webhook():
         + "/webhook"
     )
 
+    print(
+        "Setting Telegram webhook to:",
+        url
+    )
+
     result = send_request(
         "setWebhook",
         {
-            "url": url
+            "url": url,
+            "allowed_updates": [
+                "message"
+            ],
         }
     )
 
     print(
-        "Telegram webhook result:",
+        "SET WEBHOOK RESULT:",
         result
     )
+
+    # Check actual Telegram webhook
+    info = send_request(
+        "getWebhookInfo"
+    )
+
+    if info:
+
+        safe_info = info.get(
+            "result",
+            info
+        )
+
+        print(
+            "========== WEBHOOK INFO =========="
+        )
+
+        print(
+            "url:",
+            safe_info.get("url")
+        )
+
+        print(
+            "pending_update_count:",
+            safe_info.get(
+                "pending_update_count"
+            )
+        )
+
+        print(
+            "last_error_date:",
+            safe_info.get(
+                "last_error_date"
+            )
+        )
+
+        print(
+            "last_error_message:",
+            safe_info.get(
+                "last_error_message"
+            )
+        )
+
+        print(
+            "allowed_updates:",
+            safe_info.get(
+                "allowed_updates"
+            )
+        )
+
+        print(
+            "==================================="
+        )
+
+    else:
+
+        print(
+            "Could not get Telegram webhook info"
+        )
 
     return result
 
@@ -957,24 +1041,39 @@ def set_webhook_route():
     )
 
 
+@app.get("/webhook-info")
+def webhook_info_route():
+
+    info = send_request(
+        "getWebhookInfo"
+    )
+
+    return (
+        info or {"ok": False},
+        200
+    )
+
+
 # =========================================================
 # STARTUP
 # =========================================================
 
-if TELEGRAM_TOKEN and WEBHOOK_URL:
+if (
+    TELEGRAM_TOKEN
+    and WEBHOOK_URL
+):
 
     set_webhook()
+
+else:
+
+    print(
+        "TELEGRAM_TOKEN or WEBHOOK_URL "
+        "missing at startup"
+    )
 
 
 if __name__ == "__main__":
-
-    if not TELEGRAM_TOKEN:
-
-        raise SystemExit(
-            "TELEGRAM_TOKEN is missing"
-        )
-
-    set_webhook()
 
     app.run(
         host="0.0.0.0",
